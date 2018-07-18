@@ -110,10 +110,10 @@ class MnistWganInv(object):
             self.gen_train_op= slim.learning.create_train_op(self.gen_cost,genopt,summarize_gradients=True,variables_to_train=self.gen_params)
             invopt = tf.train.AdamOptimizer(
                 learning_rate=1e-4, beta1=0.5, beta2=0.9)
-            self.inv_train_op= slim.learning.create_train_op(self.inv_cost,invopt,summarize_gradients=True,variables_to_train=self.inv_params)
+            self.inv_train_op= slim.learning.create_train_op(self.inv_cost,invopt,summarize_gradients=True,variables_to_train=self.inv_params+self.gen_params)
+            #self.inv_train_op= slim.learning.create_train_op(self.inv_cost,invopt,summarize_gradients=True,variables_to_train=self.inv_params)
             disopt = tf.train.AdamOptimizer(
                 learning_rate=1e-4, beta1=0.5, beta2=0.9)
-                #learning_rate=1.52*1e-5, beta1=0.5, beta2=0.9)
             self.dis_train_op= slim.learning.create_train_op(self.dis_cost,disopt,summarize_gradients=True,variables_to_train=self.dis_params)
 
     def Discriminator_Regularizer(self,D1_logits, D1_arg, D2_logits, D2_arg):
@@ -319,7 +319,7 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('--batch_size', type=int, default=16, help='batch size')
     parser.add_argument('--epoch', type=int, default=1000, help='epoch')
-    parser.add_argument('--z_dim', type=int, default=128, help='dimension of z')
+    parser.add_argument('--z_dim', type=int, default=1024, help='dimension of z')
     parser.add_argument('--latent_dim', type=int, default=1024,
                         help='latent dimension')
     parser.add_argument('--iterations', type=int, default=100000,
