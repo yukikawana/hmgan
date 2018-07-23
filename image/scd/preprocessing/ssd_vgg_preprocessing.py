@@ -338,6 +338,47 @@ def preprocess_for_eval(image, labels, bboxes, out_shape, resize,
         bboxes = bboxes[1:]
         return image, labels, bboxes, bbox_img
 
+def preprocess_for_eval_multi(image, labels, bboxes, out_shape, resize,
+                         scope='ssd_preprocessing_train'):
+    with tf.name_scope(scope):
+
+        image = tf.to_float(image)
+        #image = tf_image_whitened(image, [_R_MEAN, _G_MEAN, _B_MEAN])
+        image=image-np.array([123.6800, 116.7790, 103.9390]).reshape((1,1,1,3))
+
+        # Add image rectangle to bboxes.
+        bbox_img = tf.constant([[0., 0., 1., 1.]])
+        if bboxes is None:
+            bboxes = bbox_img
+        else:
+            bboxes = tf.concat(0, [bbox_img, bboxes])
+
+        # Resize strategy...
+        if resize == Resize.NONE:
+            pass
+        elif resize == Resize.CENTRAL_CROP:
+            image, bboxes = tf_image.resize_image_bboxes_with_crop_or_pad(
+                image, bboxes, out_shape[0], out_shape[1])
+        elif resize == Resize.PAD_AND_RESIZE:
+            # Resize image first: find the correct factor...
+            shape = tf.shape(image)
+            factor = tf.minimum(tf.to_double(1.0),
+                                tf.minimum(tf.to_double(out_shape[0] / shape[0]),
+                                           tf.to_double(out_shape[1] / shape[1])))
+            resize_shape = factor * tf.to_double(shape[0:2])
+            resize_shape = tf.cast(tf.floor(resize_shape), tf.int32)
+
+            image = tf_image.resize_image(image, resize_shape,
+                                          method=tf.image.ResizeMethod.BILINEAR,
+                                          align_corners=False)
+            # Pad to expected size.
+            image, bboxes = tf_image.resize_image_bboxes_with_crop_or_pad(
+                image, bboxes, out_shape[0], out_shape[1])
+
+        # Split back bounding boxes.
+        bbox_img = bboxes[0]
+        bboxes = bboxes[1:]
+        return image, labels, bboxes, bbox_img  
 
 def preprocess_image(image,
                      labels,

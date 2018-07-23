@@ -94,7 +94,7 @@ def ssd_bboxes_select_layer(predictions_layer,
         scores = sub_predictions[idxes]
         bboxes = localizations_layer[idxes[:-1]]
 
-    return classes, scores, bboxes
+    return classes, scores, bboxes, idxes[1]
 
 
 def ssd_bboxes_select(predictions_net,
@@ -112,29 +112,35 @@ def ssd_bboxes_select(predictions_net,
     l_classes = []
     l_scores = []
     l_bboxes = []
-    # l_layers = []
-    # l_idxes = []
+    l_layers = []
+    l_idxes = []
     for i in range(len(predictions_net)):
-        classes, scores, bboxes = ssd_bboxes_select_layer(
+        classes, scores, bboxes, idxes = ssd_bboxes_select_layer(
             predictions_net[i], localizations_net[i], anchors_net[i],
             select_threshold, img_shape, num_classes, decode)
         l_classes.append(classes)
         l_scores.append(scores)
         l_bboxes.append(bboxes)
         # Debug information.
-        # l_layers.append(i)
-        # l_idxes.append((i, idxes))
+        ll=np.zeros(len(classes))
+        ll[:]=i
+        l_layers.append(ll)
+        l_idxes.append(idxes)
 
     classes = np.concatenate(l_classes, 0)
     scores = np.concatenate(l_scores, 0)
     bboxes = np.concatenate(l_bboxes, 0)
-    return classes, scores, bboxes
+    idxes= np.concatenate(l_idxes, 0)
+    layers= np.concatenate(l_layers,0)
+    idxes=np.uint32(idxes)
+    layers=np.uint32(layers)
+    return classes, scores, bboxes, idxes,layers 
 
 
 # =========================================================================== #
 # Common functions for bboxes handling and selection.
 # =========================================================================== #
-def bboxes_sort(classes, scores, bboxes, top_k=400):
+def bboxes_sort(classes, scores, bboxes,ridxes,rlayers, top_k=400):
     """Sort bounding boxes by decreasing order and keep only the top_k
     """
     # if priority_inside:
@@ -147,7 +153,9 @@ def bboxes_sort(classes, scores, bboxes, top_k=400):
     classes = classes[idxes][:top_k]
     scores = scores[idxes][:top_k]
     bboxes = bboxes[idxes][:top_k]
-    return classes, scores, bboxes
+    ridxes = ridxes[idxes][:top_k]
+    layers = rlayers[idxes][:top_k]
+    return classes, scores, bboxes,ridxes,layers
 
 
 def bboxes_clip(bbox_ref, bboxes):
@@ -226,7 +234,7 @@ def bboxes_intersection(bboxes_ref, bboxes2):
     return score
 
 
-def bboxes_nms(classes, scores, bboxes, nms_threshold=0.45):
+def bboxes_nms(classes, scores, bboxes, ridxes,rlayers, nms_threshold=0.45):
     """Apply non-maximum selection to bounding boxes.
     """
     keep_bboxes = np.ones(scores.shape, dtype=np.bool)
@@ -239,7 +247,7 @@ def bboxes_nms(classes, scores, bboxes, nms_threshold=0.45):
             keep_bboxes[(i+1):] = np.logical_and(keep_bboxes[(i+1):], keep_overlap)
 
     idxes = np.where(keep_bboxes)
-    return classes[idxes], scores[idxes], bboxes[idxes]
+    return classes[idxes], scores[idxes], bboxes[idxes], ridxes[idxes],rlayers[idxes]
 
 
 def bboxes_nms_fast(classes, scores, bboxes, threshold=0.45):

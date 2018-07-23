@@ -14,20 +14,22 @@ def main():
     sess=tf.Session(config=config)
 
     #define tensors and  models
-    zb=5
+    zb=6
     nf=256
     zdim=1024
     images = tf.placeholder(tf.float32,[2,150,496,3])
     z = tf.placeholder(tf.float32,[zb,zdim])
 
-    scdobj = scd.SCD(sess,input=images)
+
+    scdobj = scd.SCD(input=images)
     imgsynth = eval_imgsynth.ImageSynthesizer(scdobj.end_points["pool5"])
 
-    rgan = eval_rgan.rgan(images=scdobj.end_points["pool5"],z_dim=zdim,nf=nf)
+    rgan = eval_rgan.rgan(images=scdobj.end_points["pool5"],z_dim=zdim,nf=nf, training=True)
     imgsynth_from_feature = eval_imgsynth.ImageSynthesizer(rgan.rec_x_out,reuse=True)
 
-    rgan_from_z = eval_rgan.rgan(latent_vec=z,nf=nf,z_dim=zdim,reuse=True)
+    rgan_from_z = eval_rgan.rgan(latent_vec=z,nf=nf,z_dim=zdim,reuse=True, training=True)
     imgsynth_from_z = eval_imgsynth.ImageSynthesizer(rgan_from_z.rec_x_p_out,reuse=True)
+
 
     #load weights
     scd_saver = scd.get_saver()
@@ -45,6 +47,11 @@ def main():
     #reses = imgsynth.generate_image_from_featuremap(np.expand_dims(image,0),images)
     image = np.array(co)
 
+    #simply get detection result
+    reses = scdobj.get_image(sess,image)
+    for i, a in enumerate(reses):
+        print(i)
+        skimage.io.imsave("test/detected%d.jpg"%i,a)
     #model:image=>feature, image decoder:feature=>image_hat
     reses = imgsynth.generate_image_from_featuremap(sess,image,images)
     for i, a in enumerate(reses):
@@ -58,17 +65,54 @@ def main():
         print(i)
         skimage.io.imsave("test/test%d_2.jpg"%i,a)
 
-    zsp = np.random.randn(2,zdim)
-    #zsp = np.random.uniform(0,1,size=(2,128))
+    #get detection result thru gan and image decoder
+    reses = scdobj.get_image(sess,reses)
+    for i, a in enumerate(reses):
+        print(i)
+        skimage.io.imsave("test/gan_detected%d.jpg"%i,a)
+
+    return 0
+    #latent vector=>feature_hat, image decoder:feature_hat=>image_hat
+    np.random.seed(0)
     zs = []
-    for i in range(1,zb+1):
+    zsp = np.random.randn(zb,zdim)+1
+    zs = np.array(zsp)
+    reses = imgsynth_from_z.generate_image_from_featuremap(sess,zs,z)
+    for i, a in enumerate(reses):
+        print(i)
+        skimage.io.imsave("test/noise%d.jpg"%i,a)
+
+    #noise interpolation
+    zsb = []
+    for i in range(0,zb):
+        #zs.append(zsp[0]*float(i)/(float(zb)-1.)+zsp[1]*(1.-float(i)/(float(zb)-1.)))
+        zsb.append(zsp[i]*(1.-i/(zb-1)))
+    zsb = np.array(zsb)
+    reses = imgsynth_from_z.generate_image_from_featuremap(sess,zsb,z)
+    for i, a in enumerate(reses):
+        print(i)
+        skimage.io.imsave("test/noise_interpolate%d.jpg"%i,a)
+
+    #model:images=>features, gan:features=>latent vectors=>features_hat, interpolate:features_hat=>features_interplated, image decoder:feature_interplated=>image_hat
+    zs = []
+    zsp = rgan.generate_noise_from_featuremap(sess,image,images)
+    for i in range(0,zb):
         zs.append(zsp[0]*float(i)/zb+zsp[1]*(1-float(i)/zb))
     zs = np.array(zs)
     reses = imgsynth_from_z.generate_image_from_featuremap(sess,zs,z)
     for i, a in enumerate(reses):
         print(i)
-        skimage.io.imsave("test/noise%d.jpg"%i,a)
+        skimage.io.imsave("test/interpolate%d.jpg"%i,a)
     
+    zs = []
+    zsp = rgan.generate_noise_from_featuremap(sess,image,images)
+    for i in range(0,zb):
+        zs.append(zsp[0]*float(i)/zb+zsp[1]*(1-float(i)/zb)+3)
+    zs = np.array(zs)
+    reses = imgsynth_from_z.generate_image_from_featuremap(sess,zs,z)
+    for i, a in enumerate(reses):
+        print(i)
+        skimage.io.imsave("test/interpolate2%d.jpg"%i,a)
 
 if __name__ == "__main__":
     main()

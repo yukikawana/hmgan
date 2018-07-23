@@ -169,6 +169,14 @@ class rgan(object):
     def generate_featuremap_from_noise(self,sess,noise):
         samples = sess.run(self.x_p, feed_dict={self.z: noise})
         return samples
+
+    def generate_noise_from_featuremap(self,sess,featuremap,images=None):
+        if images==None:
+            samples = sess.run(self.z_p, feed_dict={self.pre_x: featuremap})
+        else:
+            real_image = featuremap
+            samples = sess.run(self.z_p, feed_dict={images: real_image})
+        return samples
  
     def reconstruct_featuremap(self,sess,featuremap):
         reconstructions = sess.run(self.rec_x_out, feed_dict={self.pre_x: featuremap})

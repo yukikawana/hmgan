@@ -23,8 +23,9 @@ import matplotlib.cm as mpcm
 import cv2
 
 from nets import ssd_vgg_300
-from nets import ssd_common
+from nets import np_methods
 from preprocessing import ssd_vgg_preprocessing
+import visualization
 
 # In[3]:
 
@@ -85,15 +86,17 @@ def plot_image(img, title='', figsize=(24, 9)):
 
 
 # In[7]:
-def get_tenors(input=None, reuse=None):
+def get_tenors(input=None, reuse=None,bbox=False):
 
 # Input placeholder.
     if not input == None:
         assert(input.get_shape().ndims == 4)
         image_4d=input-np.array([123.6800, 116.7790, 103.9390]).reshape((1,1,1,3))
     else:
-        img_input = tf.placeholder(tf.uint8, shape=(None, None, 3))
-        image_pre, labels_pre, bboxes_pre, bbox_img = ssd_vgg_preprocessing.preprocess_for_eval( img_input , None, None, (None, None), resize=ssd_vgg_preprocessing.Resize.NONE)
+        image_4d= tf.placeholder(tf.uint8, shape=(None ,None, None, 3))
+    if bbox:
+        image_pre, labels_pre, bboxes_pre, bbox_img = ssd_vgg_preprocessing.preprocess_for_eval_multi( image_4d, None, None, (None, None), resize=ssd_vgg_preprocessing.Resize.NONE)
+    if input==None:
         image_4d = tf.expand_dims(image_pre, 0)
 
 # Network parameters.
@@ -138,10 +141,10 @@ def get_tenors(input=None, reuse=None):
 # Presenting the different steps of the vehicle detection pipeline.
 
 # In[9]:
-    if not input == None:
+    if not input == None and not bbox:
         return end_points
-    else:
-        return predictions, localisations, logits, end_points, img_input, ssd
+    elif bbox:
+        return predictions, localisations, bbox_img, logits, end_points, image_4d, ssd
 
 # Main SSD processing routine.
 def ssd_process_image(img,tensors, isess, select_threshold=0.5):
@@ -199,7 +202,7 @@ def ssd_process_image(img,tensors, isess, select_threshold=0.5):
     anchors = ssd.anchors(img.shape, dtype=np.float32)
     
     # Compute classes and bboxes from the net outputs: decode SSD output.
-    rclasses, rscores, rbboxes, rlayers, ridxes = ssd_common.ssd_bboxes_select(
+    rclasses, rscores, rbboxes, rlayers, ridxes, rlayers= ssd_common.ssd_bboxes_select(
             rpredictions, rlocalisations, anchors,
             threshold=select_threshold, img_shape=img.shape, num_classes=ssd.params.num_classes, decode=True)
     
@@ -336,12 +339,51 @@ def get_saver():
     return saver
 
 class SCD(object):
-    def __init__(self,sess, input=None,reuse=None):
+    def __init__(self, input=None,reuse=None):
+        if reuse:
+            tf.get_variable_scope().reuse_variables()
         if input==None:
             self.input=tf.placeholder(tf.float32,[None,None,None,3])
         else:
             self.input=input
-        self.end_points = get_tenors(self.input,reuse)
+        predictions, localisations, bbox_img, logits, self.end_points, img_input, self.ssd = get_tenors(self.input,reuse,True)
+        self.tensors = [predictions,localisations,bbox_img]
+
+    def get_image(self,sess,input_val,imgs=None,tensor=None):
+        if tensor==None:
+            tensors_val = sess.run(self.tensors, feed_dict={self.input: input_val})
+        else:
+            tensors_val = sess.run(self.tensors, feed_dict={tensor: input_val})
+        chs = input_val.shape[0]
+        oimgs=[]
+        for idx,img in enumerate(input_val if imgs==None else imgs):
+            inp = [[np.expand_dims(b[idx],0) for b in a] for a in tensors_val[0:2]]
+            inp.append(tensors_val[2])
+            rclasses, rscores, rbboxes,ridxes,rlayers = self.process_tensor(inp, net_shape=input_val.shape[1:3] if imgs==None else imgs.shape[1:3])
+            oimgs.append(visualization.plt_bboxes_return_img(img, rclasses, rscores, rbboxes))
+            a =  inp[0][rlayers[0]]
+            #print(a.reshape(a.shape[0],-1,a.shape[-1])[0,ridxes[0],rclasses[0]],rscores[0])
+            #assert(a.reshape(a.shape[0],-1,a.shape[-1])[0,ridxes[0],rclasses[0]]==rscores[0])
+            b,h,w,an,c= a.shape
+            bi,hi,wi,ani = np.unravel_index(ridxes[0],[1,h,w,an])
+            assert(a[bi,hi,wi,ani,1]==rscores[0])
+            for iidx,(l, el,rs) in enumerate(zip(rlayers, ridxes, rscores)):
+                print(iidx,l,el,rs)
+        return np.array(oimgs)
+        
+
+    def process_tensor(self, tensors, net_shape=(150,496),select_threshold=0.9, nms_threshold=0.3):
+        rpredictions, rlocalisations,rbbox_img = tensors
+        ssd_anchors = self.ssd.anchors(net_shape)
+        rclasses, rscores, rbboxes, ridxes, rlayers = np_methods.ssd_bboxes_select(
+                rpredictions, rlocalisations, ssd_anchors,
+                select_threshold=select_threshold, img_shape=net_shape, num_classes=self.ssd.params.num_classes, decode=True)
+        rbboxes = np_methods.bboxes_clip(rbbox_img, rbboxes)
+        rclasses, rscores, rbboxes,ridxes,rlayers = np_methods.bboxes_sort(rclasses, rscores, rbboxes,ridxes,rlayers, top_k=400)
+        rclasses, rscores, rbboxes,ridxes,rlayers = np_methods.bboxes_nms(rclasses, rscores, rbboxes,ridxes,rlayers, nms_threshold=nms_threshold)
+        # Resize bboxes to original image shape. Note: useless for Resize.WARP!
+        rbboxes = np_methods.bboxes_resize(rbbox_img, rbboxes)
+        return rclasses, rscores, rbboxes,ridxes,rlayers
 
 if __name__ == "__main__":
     main()

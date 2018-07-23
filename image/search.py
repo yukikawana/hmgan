@@ -102,6 +102,7 @@ def recursive_search(gen_fn, inv_fn, cla_fn, x, y, y_t=None, z=None,
         if verbose and y_t is None:
             print("UNTARGET y=%d y_adv=%d d_adv=%.4f l=%.4f h=%.4f count=%d" % (y, y_adv, d_adv, l, h, counter))
         elif verbose:
+            print(y,y_adv,d_adv,counter)
             print("TARGETED y=%d y_adv=%d d_adv=%.4f l=%.4f h=%.4f count=%d" % (y, y_adv, d_adv, l, h, counter))
 
     if verbose:
@@ -124,8 +125,9 @@ def recursive_search(gen_fn, inv_fn, cla_fn, x, y, y_t=None, z=None,
             indices_adv = np.where(y_tilde != y)[0]
         else:
             indices_adv = np.where(y_tilde == y_t)[0]
-
+        print("ind adv ",indices_adv)
         if len(indices_adv) == 0:       # no candidate generated
+            print("adv 0")
             if h - l < step:
                 break
             else:
@@ -133,6 +135,7 @@ def recursive_search(gen_fn, inv_fn, cla_fn, x, y, y_t=None, z=None,
                 counter = 1
                 printout()
         else:                           # certain candidates generated
+            print("adv not 0")
             idx_adv = indices_adv[np.argmin(d[indices_adv])]
 
             if y_t is None:
